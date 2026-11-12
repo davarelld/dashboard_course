@@ -54,7 +54,14 @@ if pilihan_dashboard == "Dashboard EDA":
         'st.set_page_config(page_title="EDA Churn", page_icon="🔎", layout="wide")',
         "# page config sudah ditetapkan oleh app_prediksi.py",
     )
-    exec(compile(eda_source, str(eda_path), "exec"), {"__name__": "__main__"})
+    exec(
+        compile(eda_source, str(eda_path), "exec"),
+        {
+            "__name__": "__main__",
+            "__file__": str(eda_path),
+            "__package__": None,
+        },
+    )
     st.stop()
 
 
