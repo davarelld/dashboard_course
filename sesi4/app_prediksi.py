@@ -30,410 +30,439 @@ st.set_page_config(
 )
 
 
-# ---------- 1) LOAD MODEL ----------
-
-# Sekali saja, disimpan di cache
-
-@st.cache_resource
-def get_model():
-    return load_model()
-
-
-@st.cache_data
-def get_meta():
-    return load_metadata()
-
-
-model, meta = get_model(), get_meta()
-
-
-# ---------- HEADER ----------
-
-st.title("🤖 Prediksi Risiko Churn Pelanggan")
-
-
-with st.expander(
-    "ℹ️ Informasi model final",
-    expanded=False
-):
-    st.write(
-        f"**{meta['model_name']}** · "
-        f"versi {meta['model_version']} · "
-        f"{meta['algorithm']}"
-    )
-
-    st.write(
-        "Fitur input:",
-        ", ".join(meta["feature_order"])
-    )
-
-    st.write(
-        f"Threshold keputusan: {meta['decision_threshold']} · "
-        f"Risk bins: {meta['risk_bins']}"
-    )
-
-    st.caption(
-        "Model tidak dilatih ulang di aplikasi ini; "
-        "aplikasi hanya melakukan inference."
-    )
-
-
-COLOR = {
-    "Rendah": "🟢",
-    "Sedang": "🟡",
-    "Tinggi": "🔴"
-}
-
-
-# ---------- TABS ----------
-
-tab_single, tab_batch = st.tabs(
-    [
-        "👤 Prediksi satu pelanggan",
-        "📂 Prediksi batch (CSV)"
-    ]
+# ---------- NAVIGASI DASHBOARD ----------
+pilihan_dashboard = st.sidebar.selectbox(
+    "Pilih dashboard",
+    ["Prediksi Churn", "Dashboard EDA"],
 )
 
+if pilihan_dashboard == "Dashboard EDA":
+    # Jalankan app_eda.py tanpa page config kedua.
+    eda_path = ROOT / "sesi2" / "app_eda.py"
+    if not eda_path.exists():
+        eda_path = Path(__file__).resolve().with_name("app_eda.py")
 
-# ---------- 2) PREDIKSI SATU PELANGGAN ----------
+    if not eda_path.exists():
+        st.error(
+            "File app_eda.py tidak ditemukan. Letakkan app_eda.py di folder "
+            "yang sama dengan app_prediksi.py atau di ROOT / 'sesi2'."
+        )
+        st.stop()
 
-# Input lewat form
+    eda_source = eda_path.read_text(encoding="utf-8")
+    eda_source = eda_source.replace(
+        'st.set_page_config(page_title="EDA Churn", page_icon="🔎", layout="wide")',
+        "# page config sudah ditetapkan oleh app_prediksi.py",
+    )
+    exec(compile(eda_source, str(eda_path), "exec"), {"__name__": "__main__"})
+    st.stop()
 
-with tab_single:
 
-    cats = meta["categories"]
-    rng = meta["numeric_ranges"]
+if pilihan_dashboard == "Prediksi Churn":
+    # ---------- 1) LOAD MODEL ----------
 
-    with st.form("form_prediksi"):
+    # Sekali saja, disimpan di cache
 
-        c1, c2, c3 = st.columns(3)
+    @st.cache_resource
+    def get_model():
+        return load_model()
 
-        region = c1.selectbox(
-            "Region",
-            cats["region"]
+
+    @st.cache_data
+    def get_meta():
+        return load_metadata()
+
+
+    model, meta = get_model(), get_meta()
+
+
+    # ---------- HEADER ----------
+
+    st.title("🤖 Prediksi Risiko Churn Pelanggan")
+
+
+    with st.expander(
+        "ℹ️ Informasi model final",
+        expanded=False
+    ):
+        st.write(
+            f"**{meta['model_name']}** · "
+            f"versi {meta['model_version']} · "
+            f"{meta['algorithm']}"
         )
 
-        segment = c1.selectbox(
-            "Segmen",
-            cats["segment"]
+        st.write(
+            "Fitur input:",
+            ", ".join(meta["feature_order"])
         )
 
-        contract = c2.selectbox(
-            "Jenis kontrak",
-            cats["contract_type"]
+        st.write(
+            f"Threshold keputusan: {meta['decision_threshold']} · "
+            f"Risk bins: {meta['risk_bins']}"
         )
 
-        payment = c2.selectbox(
-            "Metode pembayaran",
-            cats["payment_method"]
+        st.caption(
+            "Model tidak dilatih ulang di aplikasi ini; "
+            "aplikasi hanya melakukan inference."
         )
 
-        service = c3.selectbox(
-            "Layanan internet",
-            cats["internet_service"]
-        )
 
-        tenure = c3.number_input(
-            "Tenure (bulan)",
-            1,
-            72,
-            6
-        )
+    COLOR = {
+        "Rendah": "🟢",
+        "Sedang": "🟡",
+        "Tinggi": "🔴"
+    }
 
-        d1, d2, d3 = st.columns(3)
 
-        monthly = d1.number_input(
-            "Tagihan bulanan (Rp)",
-            100_000,
-            2_000_000,
-            450_000,
-            step=10_000
-        )
+    # ---------- TABS ----------
 
-        complaints = d2.number_input(
-            "Jumlah keluhan",
-            0,
-            10,
-            2
-        )
+    tab_single, tab_batch = st.tabs(
+        [
+            "👤 Prediksi satu pelanggan",
+            "📂 Prediksi batch (CSV)"
+        ]
+    )
 
-        calls = d3.number_input(
-            "Panggilan ke CS",
-            0,
-            15,
-            3
-        )
 
-        submitted = st.form_submit_button(
-            "🔮 Prediksi",
-            type="primary"
-        )
+    # ---------- 2) PREDIKSI SATU PELANGGAN ----------
 
-    if submitted:
+    # Input lewat form
 
-        row = pd.DataFrame([
-            {
-                "tenure_months": tenure,
-                "monthly_charges": monthly,
-                "total_charges": monthly * tenure,
-                "num_complaints": complaints,
-                "support_calls": calls,
-                "region": region,
-                "segment": segment,
-                "contract_type": contract,
-                "payment_method": payment,
-                "internet_service": service,
-            }
-        ])
+    with tab_single:
 
-        errs = validate_input(row, meta)
+        cats = meta["categories"]
+        rng = meta["numeric_ranges"]
 
-        if errs:
-            st.error("\n".join(errs))
+        with st.form("form_prediksi"):
 
-        else:
+            c1, c2, c3 = st.columns(3)
 
-            res = predict(
-                model,
-                row,
-                meta
-            ).iloc[0]
-
-            m1, m2, m3 = st.columns(3)
-
-            m1.metric(
-                "Probabilitas churn",
-                f"{res.churn_probability:.1%}"
+            region = c1.selectbox(
+                "Region",
+                cats["region"]
             )
 
-            m2.metric(
-                "Prediksi",
-                "Churn" if res.predicted_churn else "Bertahan"
+            segment = c1.selectbox(
+                "Segmen",
+                cats["segment"]
             )
 
-            m3.metric(
-                "Kategori risiko",
-                f"{COLOR[res.risk_category]} {res.risk_category}"
+            contract = c2.selectbox(
+                "Jenis kontrak",
+                cats["contract_type"]
             )
 
-            st.progress(
-                float(res.churn_probability)
+            payment = c2.selectbox(
+                "Metode pembayaran",
+                cats["payment_method"]
             )
 
-            if res.risk_category == "Tinggi":
+            service = c3.selectbox(
+                "Layanan internet",
+                cats["internet_service"]
+            )
 
-                st.error(
-                    "Rekomendasi: prioritaskan retensi — "
-                    "tawarkan migrasi ke kontrak tahunan "
-                    "dan tindak lanjuti keluhan dalam 48 jam."
-                )
+            tenure = c3.number_input(
+                "Tenure (bulan)",
+                1,
+                72,
+                6
+            )
 
-            elif res.risk_category == "Sedang":
+            d1, d2, d3 = st.columns(3)
 
-                st.warning(
-                    "Rekomendasi: pantau, kirim survei "
-                    "kepuasan dan penawaran loyalitas."
-                )
+            monthly = d1.number_input(
+                "Tagihan bulanan (Rp)",
+                100_000,
+                2_000_000,
+                450_000,
+                step=10_000
+            )
+
+            complaints = d2.number_input(
+                "Jumlah keluhan",
+                0,
+                10,
+                2
+            )
+
+            calls = d3.number_input(
+                "Panggilan ke CS",
+                0,
+                15,
+                3
+            )
+
+            submitted = st.form_submit_button(
+                "🔮 Prediksi",
+                type="primary"
+            )
+
+        if submitted:
+
+            row = pd.DataFrame([
+                {
+                    "tenure_months": tenure,
+                    "monthly_charges": monthly,
+                    "total_charges": monthly * tenure,
+                    "num_complaints": complaints,
+                    "support_calls": calls,
+                    "region": region,
+                    "segment": segment,
+                    "contract_type": contract,
+                    "payment_method": payment,
+                    "internet_service": service,
+                }
+            ])
+
+            errs = validate_input(row, meta)
+
+            if errs:
+                st.error("\n".join(errs))
 
             else:
 
-                st.success(
-                    "Rekomendasi: pertahankan layanan standar."
+                res = predict(
+                    model,
+                    row,
+                    meta
+                ).iloc[0]
+
+                m1, m2, m3 = st.columns(3)
+
+                m1.metric(
+                    "Probabilitas churn",
+                    f"{res.churn_probability:.1%}"
                 )
 
+                m2.metric(
+                    "Prediksi",
+                    "Churn" if res.predicted_churn else "Bertahan"
+                )
 
-# ---------- 3) PREDIKSI BATCH ----------
+                m3.metric(
+                    "Kategori risiko",
+                    f"{COLOR[res.risk_category]} {res.risk_category}"
+                )
 
-# Upload CSV pelanggan baru
+                st.progress(
+                    float(res.churn_probability)
+                )
 
-with tab_batch:
+                if res.risk_category == "Tinggi":
 
-    up = st.file_uploader(
-        "Upload CSV pelanggan baru "
-        "(format sama dengan data/new_customers.csv)",
-        type="csv"
-    )
+                    st.error(
+                        "Rekomendasi: prioritaskan retensi — "
+                        "tawarkan migrasi ke kontrak tahunan "
+                        "dan tindak lanjuti keluhan dalam 48 jam."
+                    )
 
-    pakai_contoh = st.checkbox(
-        "Gunakan contoh data/new_customers.csv",
-        value=up is None
-    )
+                elif res.risk_category == "Sedang":
 
-    if up is not None:
+                    st.warning(
+                        "Rekomendasi: pantau, kirim survei "
+                        "kepuasan dan penawaran loyalitas."
+                    )
 
-        data = pd.read_csv(up)
+                else:
 
-    elif pakai_contoh:
+                    st.success(
+                        "Rekomendasi: pertahankan layanan standar."
+                    )
 
-        data = pd.read_csv(
-            ROOT / "data" / "new_customers.csv"
+
+    # ---------- 3) PREDIKSI BATCH ----------
+
+    # Upload CSV pelanggan baru
+
+    with tab_batch:
+
+        up = st.file_uploader(
+            "Upload CSV pelanggan baru "
+            "(format sama dengan data/new_customers.csv)",
+            type="csv"
         )
 
-    else:
-
-        st.info(
-            "Upload file atau centang contoh data."
+        pakai_contoh = st.checkbox(
+            "Gunakan contoh data/new_customers.csv",
+            value=up is None
         )
-        st.stop()
 
+        if up is not None:
 
-    # ---------- VALIDASI INPUT ----------
+            data = pd.read_csv(up)
 
-    errs = validate_input(data, meta)
+        elif pakai_contoh:
 
-    if errs:
-
-        for e in errs:
-            st.error(e)
-
-        st.stop()
-
-
-    # ---------- RUN PREDICTION ----------
-
-    hasil = predict(
-        model,
-        data,
-        meta
-    )
-
-
-    # ---------- KPI CARDS ----------
-
-    k1, k2, k3, k4 = st.columns(4)
-
-    k1.metric(
-        "Pelanggan diproses",
-        f"{len(hasil):,}"
-    )
-
-    k2.metric(
-        "Prediksi churn",
-        f"{hasil.predicted_churn.sum():,}"
-    )
-
-    k3.metric(
-        "Rata-rata probabilitas",
-        f"{hasil.churn_probability.mean():.1%}"
-    )
-
-    k4.metric(
-        "Risiko tinggi",
-        f"{(hasil.risk_category == 'Tinggi').sum():,}"
-    )
-
-
-    # ---------- RISK CATEGORY CHART ----------
-
-    RISK_COLOR = {
-        "Rendah": "#1baf7a",
-        "Sedang": "#eda100",
-        "Tinggi": "#e34948"
-    }
-
-    a, b = st.columns(2)
-
-    donut = px.pie(
-        hasil,
-        names="risk_category",
-        hole=0.55,
-        color="risk_category",
-        color_discrete_map=RISK_COLOR,
-        title="Komposisi kategori risiko",
-        category_orders={
-            "risk_category": [
-                "Rendah",
-                "Sedang",
-                "Tinggi"
-            ]
-        }
-    )
-
-    donut.update_traces(
-        textinfo="percent+label"
-    )
-
-    a.plotly_chart(
-        donut.update_layout(
-            height=330,
-            showlegend=False
-        ),
-        width="stretch"
-    )
-
-
-    # ---------- CHURN PROBABILITY PER CONTRACT ----------
-
-    pk = (
-        hasil.groupby(
-            "contract_type",
-            as_index=False
-        )["churn_probability"]
-        .mean()
-    )
-
-    bar = px.bar(
-        pk,
-        x="contract_type",
-        y="churn_probability",
-        text_auto=".1%",
-        color_discrete_sequence=["#eb6834"],
-        title="Rata-rata probabilitas churn per kontrak"
-    )
-
-    bar.update_yaxes(
-        tickformat=".0%"
-    )
-
-    b.plotly_chart(
-        bar.update_layout(
-            height=330,
-            template="plotly_white",
-            xaxis_title=""
-        ),
-        width="stretch"
-    )
-
-
-    # ---------- FILTER RISK CATEGORY ----------
-
-    risiko = st.multiselect(
-        "Tampilkan kategori risiko",
-        ["Tinggi", "Sedang", "Rendah"],
-        default=["Tinggi"]
-    )
-
-    tampil = (
-        hasil[hasil.risk_category.isin(risiko)]
-        .sort_values(
-            "churn_probability",
-            ascending=False
-        )
-    )
-
-
-    # ---------- DISPLAY PREDICTION DATA ----------
-
-    st.dataframe(
-        tampil,
-        width="stretch",
-        height=320,
-        column_config={
-            "churn_probability": st.column_config.ProgressColumn(
-                "Probabilitas churn",
-                min_value=0.0,
-                max_value=1.0,
-                format="%.2f"
+            data = pd.read_csv(
+                ROOT / "data" / "new_customers.csv"
             )
+
+        else:
+
+            st.info(
+                "Upload file atau centang contoh data."
+            )
+            st.stop()
+
+
+        # ---------- VALIDASI INPUT ----------
+
+        errs = validate_input(data, meta)
+
+        if errs:
+
+            for e in errs:
+                st.error(e)
+
+            st.stop()
+
+
+        # ---------- RUN PREDICTION ----------
+
+        hasil = predict(
+            model,
+            data,
+            meta
+        )
+
+
+        # ---------- KPI CARDS ----------
+
+        k1, k2, k3, k4 = st.columns(4)
+
+        k1.metric(
+            "Pelanggan diproses",
+            f"{len(hasil):,}"
+        )
+
+        k2.metric(
+            "Prediksi churn",
+            f"{hasil.predicted_churn.sum():,}"
+        )
+
+        k3.metric(
+            "Rata-rata probabilitas",
+            f"{hasil.churn_probability.mean():.1%}"
+        )
+
+        k4.metric(
+            "Risiko tinggi",
+            f"{(hasil.risk_category == 'Tinggi').sum():,}"
+        )
+
+
+        # ---------- RISK CATEGORY CHART ----------
+
+        RISK_COLOR = {
+            "Rendah": "#1baf7a",
+            "Sedang": "#eda100",
+            "Tinggi": "#e34948"
         }
-    )
+
+        a, b = st.columns(2)
+
+        donut = px.pie(
+            hasil,
+            names="risk_category",
+            hole=0.55,
+            color="risk_category",
+            color_discrete_map=RISK_COLOR,
+            title="Komposisi kategori risiko",
+            category_orders={
+                "risk_category": [
+                    "Rendah",
+                    "Sedang",
+                    "Tinggi"
+                ]
+            }
+        )
+
+        donut.update_traces(
+            textinfo="percent+label"
+        )
+
+        a.plotly_chart(
+            donut.update_layout(
+                height=330,
+                showlegend=False
+            ),
+            width="stretch"
+        )
 
 
-    # ---------- DOWNLOAD RESULTS ----------
+        # ---------- CHURN PROBABILITY PER CONTRACT ----------
 
-    st.download_button(
-        "⬇️ Unduh hasil prediksi",
-        hasil.to_csv(index=False).encode("utf-8"),
-        "hasil_prediksi_churn.csv",
-        "text/csv"
-    )
+        pk = (
+            hasil.groupby(
+                "contract_type",
+                as_index=False
+            )["churn_probability"]
+            .mean()
+        )
+
+        bar = px.bar(
+            pk,
+            x="contract_type",
+            y="churn_probability",
+            text_auto=".1%",
+            color_discrete_sequence=["#eb6834"],
+            title="Rata-rata probabilitas churn per kontrak"
+        )
+
+        bar.update_yaxes(
+            tickformat=".0%"
+        )
+
+        b.plotly_chart(
+            bar.update_layout(
+                height=330,
+                template="plotly_white",
+                xaxis_title=""
+            ),
+            width="stretch"
+        )
+
+
+        # ---------- FILTER RISK CATEGORY ----------
+
+        risiko = st.multiselect(
+            "Tampilkan kategori risiko",
+            ["Tinggi", "Sedang", "Rendah"],
+            default=["Tinggi"]
+        )
+
+        tampil = (
+            hasil[hasil.risk_category.isin(risiko)]
+            .sort_values(
+                "churn_probability",
+                ascending=False
+            )
+        )
+
+
+        # ---------- DISPLAY PREDICTION DATA ----------
+
+        st.dataframe(
+            tampil,
+            width="stretch",
+            height=320,
+            column_config={
+                "churn_probability": st.column_config.ProgressColumn(
+                    "Probabilitas churn",
+                    min_value=0.0,
+                    max_value=1.0,
+                    format="%.2f"
+                )
+            }
+        )
+
+
+        # ---------- DOWNLOAD RESULTS ----------
+
+        st.download_button(
+            "⬇️ Unduh hasil prediksi",
+            hasil.to_csv(index=False).encode("utf-8"),
+            "hasil_prediksi_churn.csv",
+            "text/csv"
+        )
