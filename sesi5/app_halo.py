@@ -1,0 +1,12 @@
+# sesi5/app_halo.py — struktur minimal aplikasi Dash
+# Jalankan: python sesi5/app_halo.py  -> buka http://127.0.0.1:8050
+from dash import Dash, html
+
+app = Dash(__name__)                     # 1. buat aplikasi
+app.layout = html.Div([                  # 2. definisikan layout
+    html.H1("Halo, Dash!"),
+    html.P("Aplikasi Dash pertama saya."),
+])
+
+if __name__ == "__main__":               # 3. jalankan server
+    app.run(debug=True)
