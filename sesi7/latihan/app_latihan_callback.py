@@ -23,6 +23,7 @@ TABEL_COLS = ["customer_id", "region", "segment", "contract_type", "tenure_month
 LAYANAN = sorted(df.internet_service.unique())
 
 app = Dash(__name__, title="Latihan Sesi 7")
+server = app.server
 app.layout = html.Div(style={"maxWidth": "1200px", "margin": "auto", "fontFamily": "Arial"}, children=[
     html.H1("Latihan Mandiri Sesi 7 — Dash Callback"),
 
